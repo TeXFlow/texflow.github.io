@@ -1,4 +1,5 @@
 
+
 import { PracticeProblem } from './types';
 
 export const DEFAULT_MACROS_SOURCE = `[
@@ -109,9 +110,9 @@ export const DEFAULT_MACROS_SOURCE = `[
     { "trigger": "ooo", "replacement": "\\\\infty", "options": "mA" },
 	{ "trigger": "sum", "replacement": "\\\\sum", "options": "mA" },
 	{ "trigger": "prod", "replacement": "\\\\prod", "options": "mA" },
-	{ "trigger": "\\\\sum", "replacement": "\\\\sum_{\${1:i}=\${2:1}}^{\${3:N}} $0", "options": "m" },
-	{ "trigger": "\\\\prod", "replacement": "\\\\prod_{\${1:i}=\${2:1}}^{\${3:N}} $0", "options": "m" },
-    { "trigger": "lim", "replacement": "\\\\lim_{ \${1:x} \\\\to \${2:0} } $0", "options": "mA" },
+	{ "trigger": "\\\\sum", "replacement": "\\\\sum_{\${1:i}=\${2:1}}^{\${3:\\\\infty}} $0", "options": "m" },
+	{ "trigger": "\\\\prod", "replacement": "\\\\prod_{\${1:i}=\${2:1}}^{\${3:\\\\infty}} $0", "options": "m" },
+    { "trigger": "lim", "replacement": "\\\\lim_{ \${1:n} \\\\to \${2:\\\\infty} } $0", "options": "mA" },
     { "trigger": "+-", "replacement": "\\\\pm", "options": "mA" },
 	{ "trigger": "-+", "replacement": "\\\\mp", "options": "mA" },
     { "trigger": "...", "replacement": "\\\\dots", "options": "mA" },
@@ -144,7 +145,7 @@ export const DEFAULT_MACROS_SOURCE = `[
     { "trigger": "\\\\\\\\\\\\", "replacement": "\\\\setminus", "options": "mA" },
     { "trigger": "sub=", "replacement": "\\\\subseteq", "options": "mA" },
     { "trigger": "sup=", "replacement": "\\\\supseteq", "options": "mA" },
-	{ "trigger": "eset", "replacement": "\\\\emptyset", "options": "mA" },
+	{ "trigger": "eset", "replacement": "\\\\emptyset", "options": "mA", "priority": 10 },
 	{ "trigger": "set", "replacement": "\\\\{ $1 \\\\}$0", "options": "mA" },
 	{ "trigger": "e\\\\xi sts", "replacement": "\\\\exists", "options": "mA", "priority": 1 },
 
@@ -159,8 +160,8 @@ export const DEFAULT_MACROS_SOURCE = `[
 	{ "trigger": "NN", "replacement": "\\\\mathbb{N}", "options": "mA" },
     { "trigger": "QQ", "replacement": "\\\\mathbb{Q}", "options": "mA" },
 
-	{ "trigger": "([^\\\\\\\\])(\${GREEK})", "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
-	{ "trigger": "([^\\\\\\\\])(\${SYMBOL})", "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
+	{ "trigger": "(^|[^\\\\\\\\])(\${GREEK})", "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
+	{ "trigger": "(^|[^\\\\\\\\])(\${SYMBOL})", "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
 
 	{ "trigger": "\\\\(\${GREEK}|\${SYMBOL}|\${MORE_SYMBOLS})([A-Za-z])", "replacement": "\\\\[[0]] [[1]]", "options": "rmA" },
 	{ "trigger": "\\\\(\${GREEK}|\${SYMBOL}) sq", "replacement": "\\\\[[0]]^{2}", "options": "rmA" },
@@ -276,10 +277,33 @@ export const DEFAULT_MACROS_SOURCE = `[
 		return output;
 	}, "options": "mA", "description": "N x N identity matrix" },
 
-    // Smart Auto-Fractions
-    { "trigger": /\\(([^)]+)\\)\\//, "replacement": "\\\\frac{[[0]]}{$1}$0", "options": "mA", "priority": 10 },
-    { "trigger": /((\\\\[a-zA-Z]+|[a-zA-Z0-9])(\\^|_|)(\\{[^}]+\\}|[a-zA-Z0-9]?))\\//, "replacement": "\\\\frac{[[0]]}{$1}$0", "options": "mA", "priority": 5 },
-    { "trigger": /([a-zA-Z0-9\\\\]+)\\//, "replacement": "\\\\frac{[[0]]}{$1}$0", "options": "mA", "priority": 1 }
+    // Smart Auto-Fractions (Obsidian Style)
+    // NOTE: [[0]] corresponds to Group 1 because matches are sliced.
+    
+    // 1. Command/Group ending: \\sin(2x)/ -> \\frac{\\sin(2x)}{}
+    { 
+        "trigger": /(\\\\[a-zA-Z]+(?:\\^\\{[^}]+\\}|\\^[a-zA-Z0-9]|_\\{[^}]+\\}|_[a-zA-Z0-9])*\\([^)]+\\))\\/$/, 
+        "replacement": "\\\\frac{[[0]]}{$1}$0", 
+        "options": "rmA",
+        "priority": 20
+    },
+    // 2. Simple Group: (x+1)/ -> \\frac{x+1}{}
+    { 
+        "trigger": /(\\([^)]+\\))\\/$/, 
+        "replacement": "\\\\frac{[[0]]}{$1}$0", 
+        "options": "rmA",
+        "priority": 15
+    },
+    // 3. General Term (Numbers, Variables, Commands, Combinations)
+    // Matches sequences of alphanumeric chars or commands, optionally followed by subscripts/superscripts.
+    // Wrapped in outer capture group to ensure [[0]] contains the full sequence.
+    // Examples: x/ -> \\frac{x}{}, x^2/ -> \\frac{x^2}{}, 4\\pi/ -> \\frac{4\\pi}{}
+    {
+        "trigger": /((?:(?:[a-zA-Z0-9]+|\\\\[a-zA-Z]+)(?:\\^\\{[^}]+\\}|\\^[a-zA-Z0-9]|_\\{[^}]+\\}|_[a-zA-Z0-9])*)+)\\/$/,
+        "replacement": "\\\\frac{[[0]]}{$1}$0", 
+        "options": "rmA",
+        "priority": 10
+    }
 ]`;
 
 export const CURATED_PROBLEMS: Record<string, PracticeProblem[]> = {

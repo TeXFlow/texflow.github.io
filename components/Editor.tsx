@@ -1,6 +1,8 @@
 
+
+
 import React, { useRef, useEffect, useLayoutEffect, useState } from 'react';
-import { checkMacroTrigger, processReplacement } from '../services/macroEngine';
+import { checkMacroTrigger, processReplacement, TabStop } from '../services/macroEngine';
 import { Macro } from '../types';
 
 interface EditorProps {
@@ -71,7 +73,7 @@ export const Editor: React.FC<EditorProps> = ({
   const pendingSelectionRef = useRef<{ start: number, end: number } | null>(null);
 
   // Snippet State
-  const snippetTabStops = useRef<number[]>([]);
+  const snippetTabStops = useRef<TabStop[]>([]);
 
   // History Management
   const historyRef = useRef<HistoryState[]>([{ value, cursor: 0 }]);
@@ -114,27 +116,42 @@ export const Editor: React.FC<EditorProps> = ({
       lastTypeTime.current = now;
   };
 
+  // Helper to shift tab stops when text is inserted/deleted programmatically
+  const shiftTabStops = (diff: number, insertionPoint: number) => {
+      if (snippetTabStops.current.length > 0) {
+        const changeStart = insertionPoint;
+        snippetTabStops.current = snippetTabStops.current.map(stop => {
+            if (stop.start >= changeStart) {
+                return { start: Math.max(0, stop.start + diff), end: Math.max(0, stop.end + diff) };
+            }
+            return stop;
+        });
+        // Filter out stops that collapsed to negative/invalid or precede the edit weirdly?
+        // Actually we keep them if valid.
+        snippetTabStops.current = snippetTabStops.current.filter(s => s.start >= 0);
+      }
+  };
+
+  // Unified Text Updater used by Hotkeys and Events
+  const updateText = (newValue: string, newCursor: number, insertionPoint: number, diff: number, immediateHistory = true) => {
+      shiftTabStops(diff, insertionPoint);
+      saveHistory(newValue, newCursor, immediateHistory);
+      onChange(newValue);
+      setPendingSelection(newCursor);
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     const newCursorPos = e.target.selectionStart;
-
-    // Calculate diff for tabstops shift
     const diff = newValue.length - value.length;
     
-    // Update pending tabstops if we are just typing
-    if (snippetTabStops.current.length > 0) {
-        // Simple heuristic: shift all tabstops that are AFTER the cursor
-        // Note: e.target.selectionStart is where the cursor IS, which is after the inserted char
-        const insertionPoint = newCursorPos - diff; 
-        if (diff !== 0) {
-            snippetTabStops.current = snippetTabStops.current.map(pos => {
-                if (pos >= insertionPoint) return pos + diff;
-                return pos;
-            });
-            // Filter out negative positions or invalid ones if massive delete
-            snippetTabStops.current = snippetTabStops.current.filter(pos => pos <= newValue.length);
-        }
-    }
+    // Heuristic: For typing, insertion point is where cursor is (approx). 
+    // If deletion (diff < 0), insertion point is newCursorPos.
+    // If insertion (diff > 0), insertion point is newCursorPos - diff.
+    const changeStart = diff > 0 ? newCursorPos - diff : newCursorPos;
+
+    // Update TabStops manually here before Macro Trigger potentially overwrites them
+    shiftTabStops(diff, changeStart);
 
     // Trigger macros on input
     if (newValue.length > value.length) {
@@ -142,10 +159,11 @@ export const Editor: React.FC<EditorProps> = ({
        
        if (macroResult) {
          // Save history
-         saveHistory(macroResult.text, macroResult.cursorIndex, true);
+         saveHistory(macroResult.text, macroResult.selection.end, true);
          onChange(macroResult.text);
          
-         setPendingSelection(macroResult.cursorIndex);
+         // Selection logic: highlight the first tabstop
+         setPendingSelection(macroResult.selection.start, macroResult.selection.end);
          
          // Set active tabstops
          snippetTabStops.current = macroResult.tabStops;
@@ -186,6 +204,72 @@ export const Editor: React.FC<EditorProps> = ({
         return;
     }
 
+    // --- FRACTION HOTKEY (Alt + /) ---
+    if (e.altKey && e.key === '/') {
+        e.preventDefault();
+        
+        // Smart selection logic
+        let targetStart = start;
+        let targetEnd = end;
+
+        if (start === end) {
+            // No selection, find previous atom
+            // Case 1: Closing bracket
+            const prevChar = value[start - 1];
+            if ([')', '}', ']'].includes(prevChar)) {
+                const pairs: Record<string, string> = { ')': '(', '}': '{', ']': '[' };
+                const open = pairs[prevChar];
+                let balance = 1;
+                let i = start - 2;
+                while (i >= 0) {
+                    if (value[i] === prevChar) balance++;
+                    if (value[i] === open) balance--;
+                    if (balance === 0) {
+                        targetStart = i;
+                        break;
+                    }
+                    i--;
+                }
+            } 
+            // Case 2: Word / Alphanumeric
+            else {
+                let i = start - 1;
+                // Scan back until space or special char (but allow sub/superscripts)
+                while (i >= 0 && /[\w\d\^_]/.test(value[i])) {
+                    i--;
+                }
+                targetStart = i + 1;
+            }
+        }
+
+        if (targetStart < targetEnd || (start === end && targetStart < start)) {
+             const selection = value.substring(targetStart, Math.max(targetEnd, start));
+             
+             // Use dummy macro to generate tabstops efficiently
+             const fractionMacro = { 
+                 trigger: "", 
+                 replacement: "\\frac{${VISUAL}}{${1:}}$0", 
+                 options: "mA" 
+             };
+             
+             const { text: replaceText, selection: newSel, tabStops } = processReplacement(fractionMacro, [], selection);
+             
+             const newValue = value.substring(0, targetStart) + replaceText + value.substring(Math.max(targetEnd, start));
+             const diff = newValue.length - value.length;
+             
+             // Update text and shift existing stops (though fraction usually consumes them or starts new context)
+             updateText(newValue, targetStart + newSel.end, targetStart, diff, true);
+             setPendingSelection(targetStart + newSel.start, targetStart + newSel.end);
+             
+             // Set new tabstops relative to insertion
+             snippetTabStops.current = tabStops.map(ts => ({
+                 start: targetStart + ts.start,
+                 end: targetStart + ts.end
+             }));
+        }
+        return;
+    }
+
     // --- MOVE LINE UP/DOWN (Alt + Arrows) ---
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
@@ -194,7 +278,6 @@ export const Editor: React.FC<EditorProps> = ({
         const startLineIdx = value.substring(0, start).split('\n').length - 1;
         let endLineIdx = value.substring(0, end).split('\n').length - 1;
         
-        // Adjust if selection ends at the start of a newline (implies user selected the whole line including newline)
         if (end > start && value[end - 1] === '\n') {
              endLineIdx--;
         }
@@ -202,21 +285,22 @@ export const Editor: React.FC<EditorProps> = ({
         if (e.key === 'ArrowUp') {
              if (startLineIdx > 0) {
                  const lineAbove = lines[startLineIdx - 1];
-                 // Extract the group of lines to move
                  const movingLines = lines.slice(startLineIdx, endLineIdx + 1);
                  
-                 // Remove them from original spot
                  lines.splice(startLineIdx, movingLines.length);
-                 
-                 // Insert them one index earlier
                  lines.splice(startLineIdx - 1, 0, ...movingLines);
                  
                  const newValue = lines.join('\n');
-                 const shift = -(lineAbove.length + 1); // +1 for newline char
+                 const shift = -(lineAbove.length + 1); // Shift by length of line swapped
+                 const diff = 0; // Total length unchanged
+                 
+                 // Special case: Text content same length, but positions swapped. 
+                 // Tabstops should arguably move with the line, but that is complex. 
+                 // For now, we clear tabstops on line move to avoid chaos.
+                 snippetTabStops.current = [];
                  
                  saveHistory(newValue, start + shift, true); 
                  onChange(newValue);
-                 
                  setPendingSelection(start + shift, end + shift);
              }
         } else if (e.key === 'ArrowDown') {
@@ -230,9 +314,10 @@ export const Editor: React.FC<EditorProps> = ({
                  const newValue = lines.join('\n');
                  const shift = lineBelow.length + 1;
                  
+                 snippetTabStops.current = [];
+                 
                  saveHistory(newValue, start + shift, true);
                  onChange(newValue);
-                 
                  setPendingSelection(start + shift, end + shift);
              }
         }
@@ -243,12 +328,26 @@ export const Editor: React.FC<EditorProps> = ({
     if (e.key === 'Tab') {
         e.preventDefault();
 
-        // 1. Active Snippet Tabstops
+        // 1. Clean up zero-width tabstops at current position
+        // If we are already "at" a tabstop (length 0), we should consume it and move to next,
+        // otherwise we might get stuck.
+        // NOTE: We use a small threshold or precise check.
+        while (snippetTabStops.current.length > 0) {
+             const next = snippetTabStops.current[0];
+             // Logic: If cursor is exactly at the start of a tabstop, and that tabstop is zero width (just a marker), remove it.
+             // Or if we are inside the range? No, ranges are for selecting.
+             if (next.start === next.end && next.start === start) {
+                 snippetTabStops.current.shift();
+                 continue;
+             }
+             break;
+        }
+
+        // 2. Active Snippet Tabstops
         if (snippetTabStops.current.length > 0) {
             let shouldJump = true;
             
-            // Heuristic: If we are inside a matrix, and the next tabstop is *outside* that matrix,
-            // prefer the "Insert &" behavior (continue editing matrix) over "Exit Snippet".
+            // Heuristic for matrix env
             const matrixEnv = getEnclosingMatrixEnvironment(value, start);
             if (matrixEnv) {
                 const after = value.substring(start);
@@ -258,8 +357,11 @@ export const Editor: React.FC<EditorProps> = ({
                 if (endTagIdx !== -1) {
                     const matrixEnd = start + endTagIdx;
                     const nextStop = snippetTabStops.current[0];
-                    // If the tabstop is at or beyond the end of the matrix, assume it's an exit stop.
-                    if (nextStop >= matrixEnd) {
+                    
+                    // If next stop is outside matrix (physically after the end tag), 
+                    // we prefer staying in matrix with '&' UNLESS we are at the very end of a row/content?
+                    // Obsidian logic: Tab inserts & unless we are strictly jumping out.
+                    if (nextStop && nextStop.start >= matrixEnd) {
                         shouldJump = false;
                     }
                 }
@@ -267,26 +369,27 @@ export const Editor: React.FC<EditorProps> = ({
 
             if (shouldJump) {
                 const nextStop = snippetTabStops.current.shift();
-                if (nextStop !== undefined && nextStop <= value.length) {
-                    textarea.setSelectionRange(nextStop, nextStop);
+                if (nextStop) {
+                    // Safety check: ensure bounds are valid
+                    const safeStart = Math.max(0, Math.min(nextStop.start, value.length));
+                    const safeEnd = Math.max(0, Math.min(nextStop.end, value.length));
+                    textarea.setSelectionRange(safeStart, safeEnd);
                     return;
                 }
             }
         }
 
-        // 2. Matrix Environment Check
+        // 3. Matrix Environment Check
         const matrixEnv = getEnclosingMatrixEnvironment(value, start);
         if (matrixEnv) {
              const insertStr = " & ";
              const newValue = value.substring(0, start) + insertStr + value.substring(end);
              const newCursor = start + insertStr.length;
-             saveHistory(newValue, newCursor, true);
-             onChange(newValue);
-             setPendingSelection(newCursor);
+             updateText(newValue, newCursor, start, insertStr.length);
              return;
         }
 
-        // 3. "Tab Out" (Skip closing delimiters)
+        // 4. "Tab Out" (Skip closing delimiters)
         if (start === end && start < value.length) {
             const nextChar = value[start];
             const closingDelimiters = ['}', ']', ')', '$', '>', '"', "'"];
@@ -296,17 +399,15 @@ export const Editor: React.FC<EditorProps> = ({
             }
         }
 
-        // 4. Indentation
+        // 5. Indentation
         const indent = "  "; 
         const newValue = value.substring(0, start) + indent + value.substring(end);
         const newCursor = start + indent.length;
-        saveHistory(newValue, newCursor, true);
-        onChange(newValue);
-        setPendingSelection(newCursor);
+        updateText(newValue, newCursor, start, indent.length);
         return;
     }
     
-    // --- ESCAPE (Cancel Snippet) ---
+    // --- ESCAPE ---
     if (e.key === 'Escape') {
         snippetTabStops.current = [];
     }
@@ -338,9 +439,8 @@ export const Editor: React.FC<EditorProps> = ({
         
         const newValue = value.substring(0, start) + insertText + value.substring(end);
         const newCursor = start + insertText.length;
-        saveHistory(newValue, newCursor, true);
-        onChange(newValue);
-        setPendingSelection(newCursor);
+        
+        updateText(newValue, newCursor, start, insertText.length);
         return;
     }
 
@@ -349,9 +449,8 @@ export const Editor: React.FC<EditorProps> = ({
         e.preventDefault();
         if (start !== end) {
             const newValue = value.substring(0, start) + value.substring(end);
-            saveHistory(newValue, start, true);
-            onChange(newValue);
-            setPendingSelection(start);
+            const diff = -(end - start);
+            updateText(newValue, start, start, diff);
             return;
         }
         const textBefore = value.substring(0, start);
@@ -361,9 +460,9 @@ export const Editor: React.FC<EditorProps> = ({
         if (match) deleteAmount = match[0].length;
         const newValue = value.substring(0, start - deleteAmount) + value.substring(end);
         const newCursor = start - deleteAmount;
-        saveHistory(newValue, newCursor, true);
-        onChange(newValue);
-        setPendingSelection(newCursor);
+        const diff = -deleteAmount;
+        
+        updateText(newValue, newCursor, start - deleteAmount, diff);
         return;
     }
 
@@ -380,15 +479,15 @@ export const Editor: React.FC<EditorProps> = ({
             const selection = value.substring(start, end);
             const newValue = value.substring(0, start) + open + selection + close + value.substring(end);
             const newCursor = start + 1 + selection.length;
-            saveHistory(newValue, newCursor, true);
-            onChange(newValue);
-            setPendingSelection(newCursor);
+            const diff = 2; // Added 2 chars surrounding
+            
+            updateText(newValue, newCursor, start, diff);
         } else {
             const newValue = value.substring(0, start) + open + close + value.substring(end);
             const newCursor = start + 1;
-            saveHistory(newValue, newCursor, true);
-            onChange(newValue);
-            setPendingSelection(newCursor);
+            const diff = 2;
+            
+            updateText(newValue, newCursor, start, diff);
         }
         return;
     }
@@ -414,9 +513,9 @@ export const Editor: React.FC<EditorProps> = ({
             e.preventDefault();
             const newValue = value.substring(0, start - 1) + value.substring(start + 1);
             const newCursor = start - 1;
-            saveHistory(newValue, newCursor, true);
-            onChange(newValue);
-            setPendingSelection(newCursor);
+            const diff = -2;
+            
+            updateText(newValue, newCursor, start - 1, diff);
             return;
         }
     }
@@ -433,19 +532,24 @@ export const Editor: React.FC<EditorProps> = ({
         if (visualMacro) {
             e.preventDefault();
             const selection = value.substring(start, end);
-            // processReplacement now handles tabstops too
-            const { text: replacementText, newCursor, tabStops } = processReplacement(visualMacro, [], selection);
+            const { text: replacementText, selection: newSel, tabStops } = processReplacement(visualMacro, [], selection);
             
             const newValue = value.substring(0, start) + replacementText + value.substring(end);
+            const diff = newValue.length - value.length;
             
-            // absolute positions
             const insertionStart = start;
-            const absoluteCursor = insertionStart + newCursor;
-            const absoluteTabStops = tabStops.map(rel => insertionStart + rel);
+            
+            const absoluteSelection = {
+                start: insertionStart + newSel.start,
+                end: insertionStart + newSel.end
+            };
+            const absoluteTabStops = tabStops.map(ts => ({
+                start: insertionStart + ts.start,
+                end: insertionStart + ts.end
+            }));
 
-            saveHistory(newValue, absoluteCursor, true);
-            onChange(newValue);
-            setPendingSelection(absoluteCursor);
+            updateText(newValue, absoluteSelection.end, start, diff, true);
+            setPendingSelection(absoluteSelection.start, absoluteSelection.end);
             snippetTabStops.current = absoluteTabStops;
             return;
         }

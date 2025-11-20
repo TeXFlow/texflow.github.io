@@ -1,3 +1,5 @@
+
+
 import { Macro } from '../types';
 
 /**
@@ -23,15 +25,20 @@ const isInsideMath = (text: string, cursorIndex: number): boolean => {
     return dollarCount % 2 !== 0;
 };
 
+export interface TabStop {
+    start: number;
+    end: number;
+}
+
 export interface MacroResult {
     text: string;
-    newCursor: number; // Offset relative to the start of the inserted text
-    tabStops: number[]; // Offsets relative to the start of the inserted text
+    selection: TabStop;
+    tabStops: TabStop[]; 
 }
 
 /**
  * Processes replacement, handling $0 (cursor), [[n]] (captures), and function replacements.
- * Returns clean text (no markers) and tab stop locations.
+ * Returns clean text (no markers) and tab stop locations with ranges.
  */
 export const processReplacement = (
     macro: Macro, 
@@ -43,6 +50,7 @@ export const processReplacement = (
 
     if (typeof macro.replacement === 'function') {
         try {
+             // Functions receive the full match array (standard regex behavior)
              raw = (macro.replacement as any)(captures); 
         } catch (e) {
             console.error("Error executing macro function", e);
@@ -54,14 +62,15 @@ export const processReplacement = (
         raw = raw.split('${VISUAL}').join(visualContent);
         // Replace capture groups [[0]], [[1]], etc.
         captures.forEach((capture, index) => {
-            raw = raw.split(`[[${index}]]`).join(capture);
+            const val = capture !== undefined ? capture : "";
+            raw = raw.split(`[[${index}]]`).join(val);
         });
     }
 
     // Parse Tab Stops: $0, $1, ... $9 and ${1:default}
     let clean = "";
-    let tabStopsMap: Record<number, number> = {}; 
-    let finalCursorOffset = -1;
+    // Map ID to the FIRST occurrence of that tabstop
+    let tabStopsMap: Record<number, TabStop> = {}; 
     
     let i = 0;
     while (i < raw.length) {
@@ -91,8 +100,13 @@ export const processReplacement = (
             if (complexMatch) {
                 const id = parseInt(complexMatch[1]);
                 const content = complexMatch[2];
-                tabStopsMap[id] = clean.length; // Position at start of inserted default text
+                const start = clean.length;
                 clean += content;
+                const end = clean.length; // Start and End define the range of 'content'
+
+                if (!tabStopsMap[id]) {
+                    tabStopsMap[id] = { start, end };
+                }
                 i += complexMatch[0].length;
                 continue;
             }
@@ -101,10 +115,9 @@ export const processReplacement = (
             const simpleMatch = sub.match(/^\$(\d+)/);
             if (simpleMatch) {
                 const id = parseInt(simpleMatch[1]);
-                if (id === 0) {
-                    finalCursorOffset = clean.length;
-                } else {
-                    tabStopsMap[id] = clean.length;
+                const start = clean.length;
+                if (!tabStopsMap[id]) {
+                    tabStopsMap[id] = { start, end: start };
                 }
                 i += simpleMatch[0].length;
                 continue;
@@ -115,35 +128,41 @@ export const processReplacement = (
         i++;
     }
 
-    // Determine cursor and tabstops
-    if (finalCursorOffset === -1) finalCursorOffset = clean.length;
-
-    // Sort tabstops by ID (1, 2, 3...)
-    const sortedStops = Object.keys(tabStopsMap)
-        .map(Number)
-        .sort((a, b) => a - b)
-        .map(id => tabStopsMap[id]);
-
-    // If there are explicit tabstops ($1+), usually $1 is the first jump.
-    // If not, $0 is the cursor position.
+    // Determine sequence
+    const sortedIds = Object.keys(tabStopsMap).map(Number).sort((a, b) => a - b);
     
-    let newCursor = finalCursorOffset;
-    let nextStops: number[] = [];
+    let selection: TabStop = { start: clean.length, end: clean.length };
+    let nextStops: TabStop[] = [];
 
-    if (sortedStops.length > 0) {
-        newCursor = sortedStops[0]; // First tabstop ($1)
-        nextStops = sortedStops.slice(1);
-        // $0 is usually the final exit point, append it to the end of the chain
-        nextStops.push(finalCursorOffset);
+    // Logic: Sequence is 1, 2, 3... then 0 (or end)
+    const sequenceIds = sortedIds.filter(id => id !== 0);
+
+    if (sequenceIds.length > 0) {
+        selection = tabStopsMap[sequenceIds[0]];
+        
+        for (let k = 1; k < sequenceIds.length; k++) {
+            nextStops.push(tabStopsMap[sequenceIds[k]]);
+        }
+        
+        // $0 is always the final exit point
+        if (tabStopsMap[0]) {
+            nextStops.push(tabStopsMap[0]);
+        } else {
+            // Implicit exit at end of string if $0 not specified
+            nextStops.push({ start: clean.length, end: clean.length });
+        }
     } else {
-        // Just $0
-        newCursor = finalCursorOffset;
-        nextStops = [];
+        // Only $0 or no markers
+        if (tabStopsMap[0]) {
+            selection = tabStopsMap[0];
+        } else {
+            selection = { start: clean.length, end: clean.length };
+        }
     }
 
     return { 
         text: clean, 
-        newCursor: newCursor,
+        selection,
         tabStops: nextStops 
     };
 };
@@ -156,7 +175,7 @@ export const checkMacroTrigger = (
   cursorIndex: number,
   macros: Macro[],
   forceMath: boolean = false
-): { text: string; cursorIndex: number; tabStops: number[] } | null => {
+): { text: string; selection: TabStop; tabStops: TabStop[] } | null => {
   const textBeforeCursor = text.slice(0, cursorIndex);
   const textAfterCursor = text.slice(cursorIndex);
   
@@ -203,25 +222,34 @@ export const checkMacroTrigger = (
               const match = anchoredRegex.exec(textBeforeCursor);
               if (match) {
                   const matchText = match[0];
-                  let replacementArgs: any = match.slice(1); 
-                  if (typeof macro.replacement === 'function') {
-                      replacementArgs = match;
+                  
+                  // NOTE: We differentiate between String and Function replacements.
+                  // Functions need the FULL match array to parse logic (like `match[1]`).
+                  // String replacements use [[0]], [[1]] syntax which corresponds to Capture Groups.
+                  // To make [[0]] be the first capture group (as expected in our config), we slice the match.
+                  let replacementArgs: any = match;
+                  if (typeof macro.replacement !== 'function') {
+                       replacementArgs = match.slice(1);
                   }
 
-                  const { text: replacementText, newCursor, tabStops } = processReplacement(macro, replacementArgs);
+                  const { text: replacementText, selection, tabStops } = processReplacement(macro, replacementArgs);
 
                   const prefix = textBeforeCursor.slice(0, -matchText.length);
                   const newText = prefix + replacementText + textAfterCursor;
                   
                   // Calculate absolute positions
                   const insertionStart = prefix.length;
-                  const absoluteCursor = insertionStart + newCursor;
-                  const absoluteTabStops = tabStops.map(rel => insertionStart + rel);
-
+                  
                   return { 
                       text: newText, 
-                      cursorIndex: absoluteCursor,
-                      tabStops: absoluteTabStops
+                      selection: {
+                          start: insertionStart + selection.start,
+                          end: insertionStart + selection.end
+                      },
+                      tabStops: tabStops.map(ts => ({
+                          start: insertionStart + ts.start,
+                          end: insertionStart + ts.end
+                      }))
                   };
               }
           } catch (e) {
@@ -239,35 +267,52 @@ export const checkMacroTrigger = (
 
                  if (match) {
                       const matchText = match[0];
-                      let replacementArgs: any = match.slice(1);
-                      if (typeof macro.replacement === 'function') {
-                          replacementArgs = match;
+                      
+                      let replacementArgs: any = match;
+                      if (typeof macro.replacement !== 'function') {
+                          replacementArgs = match.slice(1);
                       }
 
-                      const { text: replacementText, newCursor, tabStops } = processReplacement(macro, replacementArgs);
+                      const { text: replacementText, selection, tabStops } = processReplacement(macro, replacementArgs);
                       
                       const prefix = textBeforeCursor.slice(0, -matchText.length);
                       const newText = prefix + replacementText + textAfterCursor;
                       
                       const insertionStart = prefix.length;
-                      const absoluteCursor = insertionStart + newCursor;
-                      const absoluteTabStops = tabStops.map(rel => insertionStart + rel);
                       
-                      return { text: newText, cursorIndex: absoluteCursor, tabStops: absoluteTabStops };
+                      return { 
+                          text: newText, 
+                          selection: {
+                              start: insertionStart + selection.start,
+                              end: insertionStart + selection.end
+                      },
+                          tabStops: tabStops.map(ts => ({
+                              start: insertionStart + ts.start,
+                              end: insertionStart + ts.end
+                          }))
+                      };
                  }
              } catch (e) {}
          } else {
              if (textBeforeCursor.endsWith(macro.trigger)) {
-                 const { text: replacementText, newCursor, tabStops } = processReplacement(macro);
+                 const { text: replacementText, selection, tabStops } = processReplacement(macro);
                  
                  const prefix = textBeforeCursor.slice(0, -macro.trigger.length);
                  const newText = prefix + replacementText + textAfterCursor;
                  
                  const insertionStart = prefix.length;
-                 const absoluteCursor = insertionStart + newCursor;
-                 const absoluteTabStops = tabStops.map(rel => insertionStart + rel);
-
-                 return { text: newText, cursorIndex: absoluteCursor, tabStops: absoluteTabStops };
+                 
+                 return { 
+                     text: newText, 
+                     selection: {
+                          start: insertionStart + selection.start,
+                          end: insertionStart + selection.end
+                      },
+                      tabStops: tabStops.map(ts => ({
+                          start: insertionStart + ts.start,
+                          end: insertionStart + ts.end
+                      }))
+                 };
              }
          }
       }
