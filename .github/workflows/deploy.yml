@@ -1,3 +1,4 @@
+
 name: Deploy to GitHub Pages
 
 on:
@@ -32,9 +33,6 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          # Binds the repository secret API_KEY to the environment variable during build
-          API_KEY: ${{ secrets.API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

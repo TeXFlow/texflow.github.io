@@ -7,17 +7,13 @@ import { GameHUD } from './components/GameHUD';
 import { ResultsPanel } from './components/ResultsPanel';
 import { DEFAULT_MACROS_SOURCE, CURATED_PROBLEMS, SAMPLE_PROBLEMS } from './constants';
 import { Macro, ViewMode, PracticeProblem, GameMode, GameStats } from './types';
-import { explainLatex } from './services/geminiService';
 import { generateProceduralProblem, GeneratorType, setGeneratorSeed } from './services/mathGenerator';
 import { parseMacros, serializeMacros, normalizeLatex } from './services/macroUtils';
 import { 
   Settings, 
   Play, 
   Keyboard, 
-  Sparkles, 
-  RefreshCw,
   BookOpen,
-  BrainCircuit,
   Trophy,
   Zap,
   Timer,
@@ -51,8 +47,6 @@ export default function App() {
   
   // Playground State
   const [playgroundInput, setPlaygroundInput] = useState('');
-  const [explanation, setExplanation] = useState('');
-  const [isExplaining, setIsExplaining] = useState(false);
 
   // --- PRACTICE / GAME STATE ---
   const [gameMode, setGameMode] = useState<GameMode>('ZEN');
@@ -60,7 +54,6 @@ export default function App() {
   
   const [currentProblem, setCurrentProblem] = useState<PracticeProblem>(SAMPLE_PROBLEMS[0]);
   const [practiceInput, setPracticeInput] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
   
   // Stats
   const [score, setScore] = useState(0);
@@ -73,15 +66,6 @@ export default function App() {
   
   // Derived Stats for WPM
   const charCountRef = useRef(0); // Total characters typed correctly in session
-
-  // --- Handlers ---
-  const handleExplain = async () => {
-    if (!playgroundInput.trim()) return;
-    setIsExplaining(true);
-    const result = await explainLatex(playgroundInput);
-    setExplanation(result);
-    setIsExplaining(false);
-  };
 
   // --- GAME ENGINE ---
 
@@ -153,8 +137,6 @@ export default function App() {
   };
 
   const handleNewProblem = useCallback(async (currentMode: GameMode = gameMode) => {
-    setIsGenerating(true);
-    
     try {
         let newProb: PracticeProblem;
 
@@ -185,7 +167,6 @@ export default function App() {
         console.error(e);
     } finally {
         setPracticeInput('');
-        setIsGenerating(false);
     }
   }, [gameMode]);
 
@@ -312,14 +293,6 @@ export default function App() {
                />
                <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
                   <span className="text-xs text-slate-400">{playgroundInput.length} chars</span>
-                  <button 
-                    onClick={handleExplain}
-                    disabled={isExplaining || !playgroundInput}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-sm rounded-md hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
-                  >
-                    {isExplaining ? <RefreshCw className="animate-spin w-4 h-4" /> : <BrainCircuit className="w-4 h-4" />}
-                    Explain
-                  </button>
                </div>
             </div>
 
@@ -337,16 +310,6 @@ export default function App() {
                     </div>
                   )}
                </div>
-               
-               {explanation && (
-                 <div className="p-6 bg-indigo-50 dark:bg-indigo-950/30 border-t border-indigo-100 dark:border-indigo-900/50 animate-in slide-in-from-bottom-10 fade-in duration-500">
-                    <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-200 mb-2 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" /> AI Explanation
-                    </h4>
-                    <p className="text-sm text-indigo-800 dark:text-indigo-300 leading-relaxed">{explanation}</p>
-                    <button onClick={() => setExplanation('')} className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Close</button>
-                 </div>
-               )}
             </div>
           </div>
         )}
