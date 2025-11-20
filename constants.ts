@@ -1,6 +1,5 @@
 
-
-import { PracticeProblem } from './types';
+import { PracticeProblem, KeyBinding } from './types';
 
 export const DEFAULT_MACROS_SOURCE = `[
     // Physics/Math Symbols
@@ -305,6 +304,17 @@ export const DEFAULT_MACROS_SOURCE = `[
         "priority": 10
     }
 ]`;
+
+export const DEFAULT_KEYBINDINGS: KeyBinding[] = [
+    { id: '1', keys: 'Alt+/', action: 'SMART_FRACTION' },
+    { id: '2', keys: 'Alt+ArrowUp', action: 'MOVE_LINE_UP' },
+    { id: '3', keys: 'Alt+ArrowDown', action: 'MOVE_LINE_DOWN' },
+    { id: '4', keys: 'Ctrl+z', action: 'UNDO' },
+    { id: '5', keys: 'Ctrl+Shift+Z', action: 'REDO' },
+    { id: '6', keys: 'Ctrl+Backspace', action: 'DELETE_WORD' },
+    { id: '7', keys: 'Tab', action: 'NEXT_TABSTOP' },
+    { id: '8', keys: 'Enter', action: 'INDENT' }
+];
 
 export const CURATED_PROBLEMS: Record<string, PracticeProblem[]> = {
     "Famous Identities": [

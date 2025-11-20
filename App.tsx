@@ -5,8 +5,8 @@ import { LatexPreview } from './components/LatexPreview';
 import { MacrosPanel } from './components/MacrosPanel';
 import { GameHUD } from './components/GameHUD';
 import { ResultsPanel } from './components/ResultsPanel';
-import { DEFAULT_MACROS_SOURCE, CURATED_PROBLEMS, SAMPLE_PROBLEMS } from './constants';
-import { Macro, ViewMode, PracticeProblem, GameMode, GameStats } from './types';
+import { DEFAULT_MACROS_SOURCE, CURATED_PROBLEMS, SAMPLE_PROBLEMS, DEFAULT_KEYBINDINGS } from './constants';
+import { Macro, ViewMode, PracticeProblem, GameMode, GameStats, KeyBinding } from './types';
 import { generateProceduralProblem, GeneratorType, setGeneratorSeed } from './services/mathGenerator';
 import { parseMacros, serializeMacros, normalizeLatex } from './services/macroUtils';
 import { 
@@ -24,9 +24,11 @@ export default function App() {
   // --- State ---
   
   const [macros, setMacros] = useState<Macro[]>([]);
+  const [keybindings, setKeybindings] = useState<KeyBinding[]>([]);
   
   useEffect(() => {
-      const savedSource = localStorage.getItem('texflow_macros_source_v3');
+      // Load Macros
+      const savedSource = localStorage.getItem('texflow_macros_source_v5');
       try {
           const initialMacros = parseMacros(savedSource || DEFAULT_MACROS_SOURCE);
           setMacros(initialMacros);
@@ -34,12 +36,29 @@ export default function App() {
           console.error("Failed to load macros, falling back to default", e);
           setMacros(parseMacros(DEFAULT_MACROS_SOURCE));
       }
+
+      // Load Keybinds
+      const savedKeybinds = localStorage.getItem('texflow_keybinds_v1');
+      if (savedKeybinds) {
+          try {
+              setKeybindings(JSON.parse(savedKeybinds));
+          } catch (e) {
+              setKeybindings(DEFAULT_KEYBINDINGS);
+          }
+      } else {
+          setKeybindings(DEFAULT_KEYBINDINGS);
+      }
   }, []);
 
   const handleSetMacros = (newMacros: Macro[]) => {
       setMacros(newMacros);
       const source = serializeMacros(newMacros);
-      localStorage.setItem('texflow_macros_source_v3', source);
+      localStorage.setItem('texflow_macros_source_v5', source);
+  };
+
+  const handleSetKeybinds = (newBinds: KeyBinding[]) => {
+      setKeybindings(newBinds);
+      localStorage.setItem('texflow_keybinds_v1', JSON.stringify(newBinds));
   };
 
   // Default to Practice Arena
@@ -262,7 +281,7 @@ export default function App() {
         <nav className="space-y-2 flex-1">
           {renderSidebarItem(ViewMode.PRACTICE, <Trophy size={20}/>, 'Arena')}
           {renderSidebarItem(ViewMode.PLAYGROUND, <Play size={20}/>, 'Playground')}
-          {renderSidebarItem(ViewMode.MACROS, <Settings size={20}/>, 'Configure Macros')}
+          {renderSidebarItem(ViewMode.MACROS, <Settings size={20}/>, 'Configuration')}
         </nav>
       </aside>
 
@@ -273,7 +292,7 @@ export default function App() {
         <div className="md:hidden flex border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <button onClick={() => setMode(ViewMode.PRACTICE)} className={`flex-1 py-3 text-sm font-medium border-b-2 ${mode === ViewMode.PRACTICE ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'}`}>Arena</button>
             <button onClick={() => setMode(ViewMode.PLAYGROUND)} className={`flex-1 py-3 text-sm font-medium border-b-2 ${mode === ViewMode.PLAYGROUND ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'}`}>Playground</button>
-            <button onClick={() => setMode(ViewMode.MACROS)} className={`flex-1 py-3 text-sm font-medium border-b-2 ${mode === ViewMode.MACROS ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'}`}>Macros</button>
+            <button onClick={() => setMode(ViewMode.MACROS)} className={`flex-1 py-3 text-sm font-medium border-b-2 ${mode === ViewMode.MACROS ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500'}`}>Config</button>
         </div>
 
         {/* View: Playground */}
@@ -285,7 +304,8 @@ export default function App() {
                <Editor 
                   value={playgroundInput} 
                   onChange={setPlaygroundInput} 
-                  macros={macros} 
+                  macros={macros}
+                  keybindings={keybindings}
                   autoFocus
                   className="text-slate-800 dark:text-slate-200 leading-relaxed"
                   placeholder={"Start typing...\n\nTips:\n• 'mk' for inline math ($...$)\n• 'dm' for display math ($$...$$)\n• Tab inside Matrix to insert &"}
@@ -451,7 +471,8 @@ export default function App() {
                                     <Editor 
                                         value={practiceInput} 
                                         onChange={handlePracticeInput} 
-                                        macros={macros} 
+                                        macros={macros}
+                                        keybindings={keybindings}
                                         autoFocus
                                         className="text-xl md:text-2xl h-full rounded-none border-0 shadow-none"
                                         placeholder="Type LaTeX..."
@@ -480,11 +501,17 @@ export default function App() {
              <div className="flex-1 p-4 md:p-8 overflow-hidden flex flex-col">
                 <div className="max-w-4xl mx-auto w-full h-full flex flex-col">
                     <div className="mb-6">
-                        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Macro Configuration</h2>
-                        <p className="text-slate-500 dark:text-slate-400">Define text shortcuts to speed up your LaTeX workflow.</p>
+                        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuration</h2>
+                        <p className="text-slate-500 dark:text-slate-400">Define text shortcuts and keyboard customization.</p>
                     </div>
                     <div className="flex-1 min-h-0">
-                        <MacrosPanel macros={macros} setMacros={handleSetMacros} onClose={() => setMode(ViewMode.PLAYGROUND)} />
+                        <MacrosPanel 
+                            macros={macros} 
+                            setMacros={handleSetMacros}
+                            keybindings={keybindings}
+                            setKeybindings={handleSetKeybinds}
+                            onClose={() => setMode(ViewMode.PLAYGROUND)} 
+                        />
                     </div>
                 </div>
              </div>

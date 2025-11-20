@@ -47,3 +47,20 @@ export interface LeaderboardEntry {
   isUser: boolean;
   date?: string;
 }
+
+export type EditorAction = 
+    | 'UNDO' 
+    | 'REDO' 
+    | 'DELETE_WORD' 
+    | 'DELETE_LINE' 
+    | 'MOVE_LINE_UP' 
+    | 'MOVE_LINE_DOWN' 
+    | 'SMART_FRACTION' 
+    | 'INDENT'
+    | 'NEXT_TABSTOP';
+
+export interface KeyBinding {
+    id: string;
+    keys: string; // e.g. "Ctrl+k", "Alt+Up"
+    action: EditorAction;
+}

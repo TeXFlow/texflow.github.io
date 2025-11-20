@@ -174,7 +174,8 @@ export const checkMacroTrigger = (
   text: string,
   cursorIndex: number,
   macros: Macro[],
-  forceMath: boolean = false
+  forceMath: boolean = false,
+  checkAuto: boolean = false
 ): { text: string; selection: TabStop; tabStops: TabStop[] } | null => {
   const textBeforeCursor = text.slice(0, cursorIndex);
   const textAfterCursor = text.slice(cursorIndex);
@@ -188,6 +189,9 @@ export const checkMacroTrigger = (
           const options = m.options || "";
           const modeMath = options.includes('m');
           const modeText = options.includes('t');
+          const isAuto = options.includes('A');
+          
+          if (checkAuto && !isAuto) return false;
           
           if (modeMath && !inMath) return false;
           if (modeText && inMath) return false;
@@ -289,7 +293,7 @@ export const checkMacroTrigger = (
                           tabStops: tabStops.map(ts => ({
                               start: insertionStart + ts.start,
                               end: insertionStart + ts.end
-                          }))
+                      }))
                       };
                  }
              } catch (e) {}
