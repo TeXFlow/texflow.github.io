@@ -178,6 +178,7 @@ export const DEFAULT_MACROS_SOURCE = `[
     { "trigger": "par", "replacement": "\\\\frac{ \\\\partial \${1:y} }{ \\\\partial \${2:x} } $0", "options": "m" },
     { "trigger": /pa([A-Za-z])([A-Za-z])/, "replacement": "\\\\frac{ \\\\partial [[0]] }{ \\\\partial [[1]] } ", "options": "rm" },
     { "trigger": "ddt", "replacement": "\\\\frac{d}{dt} ", "options": "mA" },
+    { "trigger": "ddx", "replacement": "\\\\frac{d}{dx} ", "options": "mA" },
 
     { "trigger": /(^|[^\\\\\\\\])int/, "replacement": "[[0]]\\\\int", "options": "mA", "priority": -1 },
     { "trigger": "\\\\int", "replacement": "\\\\int $1 \\\\, d\${2:x} $0", "options": "m" },
