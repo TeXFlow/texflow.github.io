@@ -1,3 +1,4 @@
+
 import { Macro } from '../types';
 
 const SNIPPET_VARIABLES: Record<string, string> = {
@@ -27,7 +28,8 @@ export const normalizeLatex = (latex: string): string => {
     
     // 5. Normalize superscripts/subscripts
     // Case A: Single char arg: ^x -> ^{x}, _i -> _{i}
-    norm = norm.replace(/(\^|_)([a-zA-Z0-9])\b/g, '$1{$2}');
+    // Matches any single char that isn't a backslash or brace
+    norm = norm.replace(/(\^|_)([^\\{}])/g, '$1{$2}');
     
     // Case B: Command arg: ^\infty -> ^{\infty}, _\alpha -> _{\alpha}
     // Match ^ or _ followed by backslash and letters

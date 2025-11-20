@@ -26,7 +26,7 @@ export default function App() {
   const [macros, setMacros] = useState<Macro[]>([]);
   
   useEffect(() => {
-      const savedSource = localStorage.getItem('texflow_macros_source_v2');
+      const savedSource = localStorage.getItem('texflow_macros_source_v3');
       try {
           const initialMacros = parseMacros(savedSource || DEFAULT_MACROS_SOURCE);
           setMacros(initialMacros);
@@ -39,7 +39,7 @@ export default function App() {
   const handleSetMacros = (newMacros: Macro[]) => {
       setMacros(newMacros);
       const source = serializeMacros(newMacros);
-      localStorage.setItem('texflow_macros_source_v2', source);
+      localStorage.setItem('texflow_macros_source_v3', source);
   };
 
   // Default to Practice Arena

@@ -1,7 +1,8 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { GameStats, LeaderboardEntry, GameMode } from '../types';
-import { RefreshCw, Crown, Trophy, Copy, Twitter, Check } from 'lucide-react';
+import { RefreshCw, Crown, Trophy, Copy, Twitter, Check, Download } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 interface ResultsPanelProps {
   stats: GameStats;
@@ -13,6 +14,7 @@ interface ResultsPanelProps {
 export const ResultsPanel: React.FC<ResultsPanelProps> = ({ stats, gameMode, onRestart, onChangeMode }) => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [copied, setCopied] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const storageKey = `texflow_leaderboard_${gameMode}`;
@@ -82,6 +84,30 @@ ${window.location.origin}`;
     }
   };
 
+  const handleDownloadImage = async () => {
+      if (!panelRef.current) return;
+      
+      try {
+          // Capture the component
+          const canvas = await html2canvas(panelRef.current, {
+              scale: 2, // Higher quality
+              useCORS: true,
+              backgroundColor: null, // Preserve transparency logic if needed, though usually opaque bg
+              logging: false
+          });
+          
+          const image = canvas.toDataURL("image/png");
+          
+          // Trigger download
+          const link = document.createElement('a');
+          link.href = image;
+          link.download = `texflow-${gameMode.toLowerCase()}-${stats.score}.png`;
+          link.click();
+      } catch (e) {
+          console.error("Screenshot generation failed", e);
+      }
+  };
+
   const handleTwitterShare = () => {
       const text = generateShareText();
       const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
@@ -89,7 +115,7 @@ ${window.location.origin}`;
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-300">
+    <div ref={panelRef} className="max-w-2xl mx-auto w-full bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-300 relative">
        
        {/* Header */}
        <div className="bg-indigo-600 p-6 text-center relative overflow-hidden">
@@ -152,8 +178,8 @@ ${window.location.origin}`;
                 )}
             </div>
 
-            {/* Actions */}
-            <div className="flex flex-col gap-3">
+            {/* Actions - Ignored by Screenshot */}
+            <div className="flex flex-col gap-3" data-html2canvas-ignore="true">
                 {/* Game Actions */}
                 <div className="grid grid-cols-2 gap-3">
                     <button 
@@ -171,19 +197,30 @@ ${window.location.origin}`;
                 </div>
                 
                 {/* Social Actions */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                      <button 
                         onClick={handleCopy}
-                        className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold transition-all border ${copied ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'}`}
+                        className={`flex items-center justify-center gap-2 px-2 py-3 rounded-xl font-bold transition-all border ${copied ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'}`}
+                        title="Copy Text Result"
                     >
                         {copied ? <Check size={18} /> : <Copy size={18} />}
-                        {copied ? 'Copied!' : 'Copy Result'}
+                        <span className="hidden sm:inline">{copied ? 'Copied' : 'Text'}</span>
+                    </button>
+                    <button 
+                        onClick={handleDownloadImage}
+                        className="flex items-center justify-center gap-2 px-2 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-rose-200 dark:shadow-none hover:scale-[1.02]"
+                        title="Download Screenshot"
+                    >
+                        <Download size={18} /> 
+                        <span className="hidden sm:inline">Image</span>
                     </button>
                     <button 
                         onClick={handleTwitterShare}
-                        className="flex items-center justify-center gap-2 px-4 py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-sky-200 dark:shadow-none hover:scale-[1.02]"
+                        className="flex items-center justify-center gap-2 px-2 py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-sky-200 dark:shadow-none hover:scale-[1.02]"
+                        title="Share on Twitter"
                     >
-                        <Twitter size={18} /> Tweet
+                        <Twitter size={18} /> 
+                        <span className="hidden sm:inline">Tweet</span>
                     </button>
                 </div>
             </div>

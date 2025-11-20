@@ -58,7 +58,7 @@ export const LatexPreview: React.FC<LatexPreviewProps> = ({ latex, className = '
 
         // 3. Cleanup/Styling
         // Remove outlines that MathJax sometimes adds for accessibility which can look ugly in previews
-        const mjx = container.querySelector('mjx-container');
+        const mjx = container.querySelector('mjx-container') as HTMLElement | null;
         if (mjx) {
             mjx.removeAttribute('tabindex');
             mjx.style.outline = 'none';

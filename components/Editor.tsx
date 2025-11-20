@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { checkMacroTrigger, processReplacement } from '../services/macroEngine';
 import { Macro } from '../types';
@@ -154,6 +155,7 @@ export const Editor: React.FC<EditorProps> = ({
 
     saveHistory(newValue, newCursorPos);
     onChange(newValue);
+    setPendingSelection(newCursorPos);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -243,10 +245,32 @@ export const Editor: React.FC<EditorProps> = ({
 
         // 1. Active Snippet Tabstops
         if (snippetTabStops.current.length > 0) {
-            const nextStop = snippetTabStops.current.shift();
-            if (nextStop !== undefined && nextStop <= value.length) {
-                textarea.setSelectionRange(nextStop, nextStop);
-                return;
+            let shouldJump = true;
+            
+            // Heuristic: If we are inside a matrix, and the next tabstop is *outside* that matrix,
+            // prefer the "Insert &" behavior (continue editing matrix) over "Exit Snippet".
+            const matrixEnv = getEnclosingMatrixEnvironment(value, start);
+            if (matrixEnv) {
+                const after = value.substring(start);
+                const endTag = `\\end{${matrixEnv}}`;
+                const endTagIdx = after.indexOf(endTag);
+                
+                if (endTagIdx !== -1) {
+                    const matrixEnd = start + endTagIdx;
+                    const nextStop = snippetTabStops.current[0];
+                    // If the tabstop is at or beyond the end of the matrix, assume it's an exit stop.
+                    if (nextStop >= matrixEnd) {
+                        shouldJump = false;
+                    }
+                }
+            }
+
+            if (shouldJump) {
+                const nextStop = snippetTabStops.current.shift();
+                if (nextStop !== undefined && nextStop <= value.length) {
+                    textarea.setSelectionRange(nextStop, nextStop);
+                    return;
+                }
             }
         }
 

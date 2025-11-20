@@ -1,3 +1,4 @@
+
 import { PracticeProblem } from './types';
 
 export const DEFAULT_MACROS_SOURCE = `[
@@ -57,7 +58,7 @@ export const DEFAULT_MACROS_SOURCE = `[
     { "trigger": "invs", "replacement": "^{-1}", "options": "mA" },
     { "trigger": /([A-Za-z])(\\d)/, "replacement": "[[0]]_{[[1]]}", "options": "rmA", "description": "Auto letter subscript", "priority": -1 },
 
-    { "trigger": /([^\\\\])(exp|log|ln)/, "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
+    { "trigger": /(^|[^\\\\])(exp|log|ln)/, "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
     { "trigger": "conj", "replacement": "^{\\\\ast}", "options": "mA" },
     { "trigger": "Re", "replacement": "\\\\mathrm{Re}", "options": "mA" },
 	{ "trigger": "Im", "replacement": "\\\\mathrm{Im}", "options": "mA" },
@@ -65,21 +66,21 @@ export const DEFAULT_MACROS_SOURCE = `[
 	{ "trigger": "rm", "replacement": "\\\\mathrm{$1}$0", "options": "mA" },
 
     // Linear algebra
-    { "trigger": /([^\\\\])(det)/, "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
+    { "trigger": /(^|[^\\\\])(det)/, "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
     { "trigger": "trace", "replacement": "\\\\mathrm{Tr}", "options": "mA" },
 
     // Operations
-	{ "trigger": "([a-zA-Z])hat", "replacement": "\\\\hat{[[0]]}", "options": "rmA" },
-    { "trigger": "([a-zA-Z])bar", "replacement": "\\\\overline{[[0]]}", "options": "rmA" },
-	{ "trigger": "([a-zA-Z])dot", "replacement": "\\\\dot{[[0]]}", "options": "rmA", "priority": -1 },
-	{ "trigger": "([a-zA-Z])ddot", "replacement": "\\\\ddot{[[0]]}", "options": "rmA", "priority": 1 },
-	{ "trigger": "([a-zA-Z])tilde", "replacement": "\\\\tilde{[[0]]}", "options": "rmA" },
-	{ "trigger": "([a-zA-Z])und", "replacement": "\\\\underline{[[0]]}", "options": "rmA" },
-	{ "trigger": "([a-zA-Z])vec", "replacement": "\\\\vec{[[0]]}", "options": "rmA" },
-    { "trigger": "([a-zA-Z]),\\\\.", "replacement": "\\\\mathbf{[[0]]}", "options": "rmA" },
-	{ "trigger": "([a-zA-Z])\\\\.,", "replacement": "\\\\mathbf{[[0]]}", "options": "rmA" },
-	{ "trigger": "\\\\(\${GREEK}),\\\\.", "replacement": "\\\\boldsymbol{\\\\[[0]]}", "options": "rmA" },
-	{ "trigger": "\\\\(\${GREEK})\\\\.,", "replacement": "\\\\boldsymbol{\\\\[[0]]}", "options": "rmA" },
+	{ "trigger": "([a-zA-Z])hat", "replacement": "\\\\hat{[[0]]}", "options": "rmA", "priority": 10 },
+    { "trigger": "([a-zA-Z])bar", "replacement": "\\\\overline{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "([a-zA-Z])dot", "replacement": "\\\\dot{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "([a-zA-Z])ddot", "replacement": "\\\\ddot{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "([a-zA-Z])tilde", "replacement": "\\\\tilde{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "([a-zA-Z])und", "replacement": "\\\\underline{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "([a-zA-Z])vec", "replacement": "\\\\vec{[[0]]}", "options": "rmA", "priority": 10 },
+    { "trigger": "([a-zA-Z]),\\\\.", "replacement": "\\\\mathbf{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "([a-zA-Z])\\\\.,", "replacement": "\\\\mathbf{[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "\\\\(\${GREEK}),\\\\.", "replacement": "\\\\boldsymbol{\\\\[[0]]}", "options": "rmA", "priority": 10 },
+	{ "trigger": "\\\\(\${GREEK})\\\\.,", "replacement": "\\\\boldsymbol{\\\\[[0]]}", "options": "rmA", "priority": 10 },
 
 	{ "trigger": "hat", "replacement": "\\\\hat{$1}$0", "options": "mA" },
     { "trigger": "bar", "replacement": "\\\\overline{$1}$0", "options": "mA" },
@@ -110,7 +111,7 @@ export const DEFAULT_MACROS_SOURCE = `[
 	{ "trigger": "prod", "replacement": "\\\\prod", "options": "mA" },
 	{ "trigger": "\\\\sum", "replacement": "\\\\sum_{\${1:i}=\${2:1}}^{\${3:N}} $0", "options": "m" },
 	{ "trigger": "\\\\prod", "replacement": "\\\\prod_{\${1:i}=\${2:1}}^{\${3:N}} $0", "options": "m" },
-    { "trigger": "lim", "replacement": "\\\\lim_{ \${1:h} \\\\to \${2:0} } $0", "options": "mA" },
+    { "trigger": "lim", "replacement": "\\\\lim_{ \${1:n} \\\\to \${2:\\\\infty} } $0", "options": "mA" },
     { "trigger": "+-", "replacement": "\\\\pm", "options": "mA" },
 	{ "trigger": "-+", "replacement": "\\\\mp", "options": "mA" },
     { "trigger": "...", "replacement": "\\\\dots", "options": "mA" },
@@ -178,7 +179,7 @@ export const DEFAULT_MACROS_SOURCE = `[
     { "trigger": /pa([A-Za-z])([A-Za-z])/, "replacement": "\\\\frac{ \\\\partial [[0]] }{ \\\\partial [[1]] } ", "options": "rm" },
     { "trigger": "ddt", "replacement": "\\\\frac{d}{dt} ", "options": "mA" },
 
-    { "trigger": /([^\\\\\\\\])int/, "replacement": "[[0]]\\\\int", "options": "mA", "priority": -1 },
+    { "trigger": /(^|[^\\\\\\\\])int/, "replacement": "[[0]]\\\\int", "options": "mA", "priority": -1 },
     { "trigger": "\\\\int", "replacement": "\\\\int $1 \\\\, d\${2:x} $0", "options": "m" },
     { "trigger": "dint", "replacement": "\\\\int_{\${1:0}}^{\${2:1}} $3 \\\\, d\${4:x} $0", "options": "mA" },
     { "trigger": "oint", "replacement": "\\\\oint", "options": "mA" },
@@ -189,7 +190,7 @@ export const DEFAULT_MACROS_SOURCE = `[
 
 
     // Trigonometry
-    { "trigger": /([^\\\\\\\\])(arcsin|sin|arccos|cos|arctan|tan|csc|sec|cot)/, "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
+    { "trigger": /(^|[^\\\\\\\\])(arcsin|sin|arccos|cos|arctan|tan|csc|sec|cot)/, "replacement": "[[0]]\\\\[[1]]", "options": "rmA" },
     { "trigger": /\\\\(arcsin|sin|arccos|cos|arctan|tan|csc|sec|cot)([A-Za-gi-z])/, "replacement": "\\\\[[0]] [[1]]", "options": "rmA" },
     { "trigger": /\\\\(sinh|cosh|tanh|coth)([A-Za-z])/, "replacement": "\\\\[[0]] [[1]]", "options": "rmA" },
 
