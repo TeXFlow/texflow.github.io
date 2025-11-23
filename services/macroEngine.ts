@@ -1,26 +1,42 @@
+
 import { Macro } from '../types';
 
 /**
  * Determines if the cursor is currently inside a LaTeX math environment.
- * Basic heuristic: Count unescaped $ symbols.
+ * Supports both inline $...$ and display $$...$$
  */
 const isInsideMath = (text: string, cursorIndex: number): boolean => {
-    let dollarCount = 0;
-    let escaped = false;
+    let inMath = false;    // $...$
+    let inDisplay = false; // $$...$$
 
     for (let i = 0; i < cursorIndex; i++) {
         const char = text[i];
+        
+        // Skip escaped characters
         if (char === '\\') {
-            escaped = !escaped;
-        } else {
-            if (char === '$' && !escaped) {
-                dollarCount++;
+            i++; 
+            continue;
+        }
+
+        if (char === '$') {
+            const next = text[i + 1] || '';
+
+            if (next === '$') {
+                // $$ detected: Toggle Display Mode
+                inDisplay = !inDisplay;
+                // If entering display mode, ensure inline is false (though usually mutually exclusive)
+                if (inDisplay) inMath = false;
+                i++; // Skip the second $
+            } else {
+                // $ detected: Toggle Inline Mode (only if not in Display Mode)
+                if (!inDisplay) {
+                    inMath = !inMath;
+                }
             }
-            escaped = false;
         }
     }
-    // Odd number of dollars means we are inside an open math block
-    return dollarCount % 2 !== 0;
+    
+    return inMath || inDisplay;
 };
 
 export interface TabStop {
@@ -33,6 +49,25 @@ export interface MacroResult {
     selection: TabStop;
     tabStops: TabStop[]; 
 }
+
+const unescapeSnippet = (text: string) => {
+    let res = "";
+    let i = 0;
+    while (i < text.length) {
+        const char = text[i];
+        if (char === '\\') {
+            const next = text[i+1];
+            if (['$', '}', '\\'].includes(next)) {
+                res += next;
+                i += 2;
+                continue;
+            }
+        }
+        res += char;
+        i++;
+    }
+    return res;
+};
 
 /**
  * Processes replacement, handling $0 (cursor), [[n]] (captures), and function replacements.
@@ -76,20 +111,9 @@ export const processReplacement = (
         
         if (char === '\\') {
             const next = raw[i+1] || "";
-
-            // Handle escaped newlines and tabs (\n, \t) which might come from string literals
-            if (next === 'n') {
-                clean += '\n';
-                i += 2;
-                continue;
-            }
-            if (next === 't') {
-                clean += '\t';
-                i += 2;
-                continue;
-            }
             
             // Only consume the backslash if it is escaping a special snippet character or another backslash
+            // We DO NOT strictly interpret \n or \t here to avoid breaking LaTeX commands like \nu, \times
             if (['$', '}', '\\'].includes(next)) {
                 clean += next;
                 i += 2;
@@ -109,7 +133,10 @@ export const processReplacement = (
             const complexMatch = sub.match(/^\$\{(\d+):([^}]*)\}/);
             if (complexMatch) {
                 const id = parseInt(complexMatch[1]);
-                const content = complexMatch[2];
+                const rawContent = complexMatch[2];
+                // Unescape the content inside the placeholder
+                const content = unescapeSnippet(rawContent);
+                
                 const start = clean.length;
                 clean += content;
                 const end = clean.length; // Start and End define the range of 'content'
@@ -138,36 +165,24 @@ export const processReplacement = (
         i++;
     }
 
-    // Determine sequence
+    // Determine sequence by strict numerical sort (0, 1, 2...)
+    // This supports macros where 0 is the first intended field (e.g. ${0:n})
     const sortedIds = Object.keys(tabStopsMap).map(Number).sort((a, b) => a - b);
     
     let selection: TabStop = { start: clean.length, end: clean.length };
     let nextStops: TabStop[] = [];
 
-    // Logic: Sequence is 1, 2, 3... then 0 (or end)
-    const sequenceIds = sortedIds.filter(id => id !== 0);
-
-    if (sequenceIds.length > 0) {
-        selection = tabStopsMap[sequenceIds[0]];
+    if (sortedIds.length > 0) {
+        // The lowest number is the initial selection
+        selection = tabStopsMap[sortedIds[0]];
         
-        for (let k = 1; k < sequenceIds.length; k++) {
-            nextStops.push(tabStopsMap[sequenceIds[k]]);
-        }
-        
-        // $0 is always the final exit point
-        if (tabStopsMap[0]) {
-            nextStops.push(tabStopsMap[0]);
-        } else {
-            // Implicit exit at end of string if $0 not specified
-            nextStops.push({ start: clean.length, end: clean.length });
+        // Subsequent numbers are added to the queue
+        for (let k = 1; k < sortedIds.length; k++) {
+            nextStops.push(tabStopsMap[sortedIds[k]]);
         }
     } else {
-        // Only $0 or no markers
-        if (tabStopsMap[0]) {
-            selection = tabStopsMap[0];
-        } else {
-            selection = { start: clean.length, end: clean.length };
-        }
+        // No markers found, cursor at end
+        selection = { start: clean.length, end: clean.length };
     }
 
     return { 
@@ -198,7 +213,7 @@ export const checkMacroTrigger = (
       .filter(m => {
           const options = m.options || "";
           const modeMath = options.includes('m');
-          const modeText = options.includes('t');
+          const modeText = options.includes('t') || options.includes('n'); // n often used for normal/text
           const isAuto = options.includes('A');
           
           if (checkAuto && !isAuto) return false;
@@ -207,19 +222,40 @@ export const checkMacroTrigger = (
           if (modeText && inMath) return false;
           
           // Strict check for visual macros:
-          // If macro expects visual input, it should NOT trigger on typing.
           if (typeof m.replacement === 'string' && m.replacement.includes('${VISUAL}')) {
               return false;
+          }
+          
+          // Word Boundary Check for 'w'
+          if (options.includes('w')) {
+             const triggerLen = typeof m.trigger === 'string' ? m.trigger.length : 0; 
+             // For regex, the regex itself usually handles boundaries, but we enforce it if possible
+             // For string triggers, we must check.
+             if (typeof m.trigger === 'string') {
+                  const idx = cursorIndex - triggerLen;
+                  if (idx > 0) {
+                      const charBefore = text[idx - 1];
+                      // If charBefore is a word char, then it's NOT a boundary start
+                      // We assume word chars are [a-zA-Z0-9]
+                      if (/[a-zA-Z0-9]/.test(charBefore)) return false;
+                  }
+             }
           }
 
           return true;
       });
 
-  // Sort: Priority DESC -> Index DESC (Last defined wins)
+  // Sort: Priority DESC -> Length DESC -> Index DESC (Last defined wins)
   validMacros.sort((a, b) => {
       const pA = a.priority || 0;
       const pB = b.priority || 0;
       if (pA !== pB) return pB - pA;
+      
+      // Prioritize longer string triggers to prevent substring collisions (e.g. 'eset' vs 'set')
+      const lenA = typeof a.trigger === 'string' ? a.trigger.length : 0;
+      const lenB = typeof b.trigger === 'string' ? b.trigger.length : 0;
+      if (lenA !== lenB) return lenB - lenA;
+
       return b.originalIndex - a.originalIndex;
   });
 
@@ -237,10 +273,6 @@ export const checkMacroTrigger = (
               if (match) {
                   const matchText = match[0];
                   
-                  // NOTE: We differentiate between String and Function replacements.
-                  // Functions need the FULL match array to parse logic (like `match[1]`).
-                  // String replacements use [[0]], [[1]] syntax which corresponds to Capture Groups.
-                  // To make [[0]] be the first capture group (as expected in our config), we slice the match.
                   let replacementArgs: any = match;
                   if (typeof macro.replacement !== 'function') {
                        replacementArgs = match.slice(1);
@@ -251,7 +283,6 @@ export const checkMacroTrigger = (
                   const prefix = textBeforeCursor.slice(0, -matchText.length);
                   const newText = prefix + replacementText + textAfterCursor;
                   
-                  // Calculate absolute positions
                   const insertionStart = prefix.length;
                   
                   return { 

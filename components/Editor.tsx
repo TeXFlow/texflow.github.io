@@ -161,9 +161,10 @@ export const Editor: React.FC<EditorProps> = ({
       // If selection exists, wrap selection.
       if (start !== end) {
            const selection = value.substring(start, end);
+           // Updated to use $0 as first stop (denominator) and $1 as exit
            const fractionMacro = { 
                trigger: "", 
-               replacement: "\\frac{${VISUAL}}{${1:}}$0", 
+               replacement: "\\frac{${VISUAL}}{${0:}}$1", 
                options: "mA" 
            };
            const { text: replaceText, selection: newSel, tabStops } = processReplacement(fractionMacro, [], selection);
@@ -257,9 +258,10 @@ export const Editor: React.FC<EditorProps> = ({
       
       if (captureStart < start) {
            const selection = value.substring(captureStart, start);
+           // Updated to use $0 as first stop (denominator) and $1 as exit
            const fractionMacro = { 
                trigger: "", 
-               replacement: "\\frac{${VISUAL}}{${1:}}$0", 
+               replacement: "\\frac{${VISUAL}}{${0:}}$1", 
                options: "mA" 
            };
            const { text: replaceText, selection: newSel, tabStops } = processReplacement(fractionMacro, [], selection);

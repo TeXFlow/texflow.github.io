@@ -2,9 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Macro, KeyBinding, EditorAction } from '../types';
 import { Trash2, Plus, Info, Code, List, Save, RotateCcw, Keyboard, Command } from 'lucide-react';
-import { serializeMacros, parseMacros } from '../services/macroUtils';
+import { serializeMacros, parseMacros, expandMacros } from '../services/macroUtils';
 import { normalizeKeyCombo, formatActionName } from '../services/keybindUtils';
-import { DEFAULT_MACROS_SOURCE, DEFAULT_KEYBINDINGS } from '../constants';
+import { DEFAULT_MACROS, DEFAULT_KEYBINDINGS } from '../constants';
 
 interface MacrosPanelProps {
   macros: Macro[];
@@ -77,10 +77,11 @@ export const MacrosPanel: React.FC<MacrosPanelProps> = ({ macros, setMacros, key
   const handleResetDefaults = () => {
       if (window.confirm("Are you sure you want to reset all settings to default?")) {
           try {
-              setMacros(parseMacros(DEFAULT_MACROS_SOURCE));
+              const defaults = expandMacros(DEFAULT_MACROS);
+              setMacros(defaults);
               setKeybindings(DEFAULT_KEYBINDINGS);
               if (mode === 'code') {
-                  setCode(DEFAULT_MACROS_SOURCE);
+                  setCode(serializeMacros(defaults));
               }
           } catch (e) {
               console.error("Failed to load defaults", e);

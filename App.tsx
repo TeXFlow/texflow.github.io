@@ -5,10 +5,10 @@ import { LatexPreview } from './components/LatexPreview';
 import { MacrosPanel } from './components/MacrosPanel';
 import { GameHUD } from './components/GameHUD';
 import { ResultsPanel } from './components/ResultsPanel';
-import { DEFAULT_MACROS_SOURCE, CURATED_PROBLEMS, SAMPLE_PROBLEMS, DEFAULT_KEYBINDINGS } from './constants';
+import { DEFAULT_MACROS, CURATED_PROBLEMS, SAMPLE_PROBLEMS, DEFAULT_KEYBINDINGS } from './constants';
 import { Macro, ViewMode, PracticeProblem, GameMode, GameStats, KeyBinding } from './types';
 import { generateProceduralProblem, GeneratorType, setGeneratorSeed } from './services/mathGenerator';
-import { parseMacros, serializeMacros, normalizeLatex } from './services/macroUtils';
+import { parseMacros, serializeMacros, normalizeLatex, expandMacros } from './services/macroUtils';
 import { 
   Settings, 
   Play, 
@@ -30,11 +30,12 @@ export default function App() {
       // Load Macros
       const savedSource = localStorage.getItem('texflow_macros_source_v5');
       try {
-          const initialMacros = parseMacros(savedSource || DEFAULT_MACROS_SOURCE);
+          // If savedSource exists, we parse it. Otherwise, we use the default array (expanded).
+          const initialMacros = savedSource ? parseMacros(savedSource) : expandMacros(DEFAULT_MACROS);
           setMacros(initialMacros);
       } catch (e) {
           console.error("Failed to load macros, falling back to default", e);
-          setMacros(parseMacros(DEFAULT_MACROS_SOURCE));
+          setMacros(expandMacros(DEFAULT_MACROS));
       }
 
       // Load Keybinds

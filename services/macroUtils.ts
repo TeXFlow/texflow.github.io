@@ -76,6 +76,24 @@ export const serializeMacros = (macros: Macro[]): string => {
   return `[\n${itemStrings.join(',\n')}\n]`;
 };
 
+export const expandMacros = (macros: Macro[]): Macro[] => {
+    return macros.map(m => {
+        let trigger = m.trigger;
+        if (typeof trigger === 'string') {
+             for (const [key, val] of Object.entries(SNIPPET_VARIABLES)) {
+                 if (trigger.includes(`\${${key}}`)) {
+                     trigger = trigger.split(`\${${key}}`).join(val);
+                 }
+             }
+        }
+        return { 
+            ...m, 
+            trigger,
+            id: m.id || Math.random().toString(36).substr(2, 9)
+        };
+    });
+};
+
 export const parseMacros = (source: string): Macro[] => {
   try {
     // Safe-ish eval for configuration snippets. 
@@ -87,26 +105,7 @@ export const parseMacros = (source: string): Macro[] => {
         throw new Error("Macro snippet must return an array of objects.");
     }
     
-    // Post-process: Assign IDs and Expand Variables
-    return result.map((m: any) => {
-        let trigger = m.trigger;
-        
-        // Handle snippet variables like ${GREEK} in string triggers
-        if (typeof trigger === 'string') {
-             for (const [key, val] of Object.entries(SNIPPET_VARIABLES)) {
-                 // We split/join to replace all occurrences
-                 if (trigger.includes(`\${${key}}`)) {
-                     trigger = trigger.split(`\${${key}}`).join(val);
-                 }
-             }
-        }
-
-        return {
-            ...m, 
-            trigger,
-            id: m.id || Math.random().toString(36).substr(2, 9)
-        };
-    });
+    return expandMacros(result);
   } catch (e) {
     console.error("Failed to parse macros", e);
     throw e;
